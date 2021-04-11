@@ -1,6 +1,10 @@
 import getpass
 import logging
+import os
 import os.path
+import platform
+import shlex
+import stat
 import subprocess
 
 from .exceptions import AnsibleVaultError
@@ -90,6 +94,26 @@ class PromptVaultSecret(VaultSecret):
       raise AnsibleVaultError('Passwords do not match')
 
 
+def is_executable(filename):
+  """Checks if a file is executable.
+
+  On Windows this requires using bash and runs a test.
+  """
+  if platform.system() == 'Windows':
+    cmd = ['test', '-x', filename]
+    try:
+      p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+      # Must not have test and so we can't check
+      return False
+    else:
+      p.communicate()
+      return p.returncode == 0
+  else:
+    return ((stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH) &
+            os.stat(filename)[stat.ST_MODE])
+
+
 def script_is_client(filename):
   """Determine if a vault secret script is a client script"""
 
@@ -107,17 +131,16 @@ def get_file_vault_secret(filename=None, vault_id=None, encoding=None):
     raise AnsibleVaultError(
         f'The vault password file {this_path} was not found')
 
-    # TODO: detect executable scripts on Windows
-    ## if is_executable(this_path):
-      ## if script_is_client(filename):
-        ## LOGGER.debug(
-            ## f'The vault password file {filename} is a client script.')
-        ## return ClientScriptVaultSecret(filename=this_path, vault_id=vault_id,
-                                       ## encoding=encoding)
-      ## # just a plain vault password script. No args, returns a byte array
-      ## return ScriptVaultSecret(filename=this_path, encoding=encoding)
+  if is_executable(this_path):
+    if script_is_client(filename):
+      LOGGER.debug(
+          f'The vault password file {filename} is a client script.')
+      return ClientScriptVaultSecret(filename=this_path, vault_id=vault_id,
+                                     encoding=encoding)
+    # just a plain vault password script. No args, returns a byte array
+    return ScriptVaultSecret(filename=this_path, encoding=encoding)
 
-    return FileVaultSecret(filename=this_path, encoding=encoding)
+  return FileVaultSecret(filename=this_path, encoding=encoding)
 
 
 class FileVaultSecret(VaultSecret):
@@ -139,25 +162,25 @@ class FileVaultSecret(VaultSecret):
     return None
 
   def load(self):
-    self._bytes = self._read_file(self.filename)
+    self._bytes = self._read_file()
 
-  def _read_file(self, filename):
+  def _read_file(self):
     """Reads a vault password from a file."""
 
     try:
-      with open(filename, 'rb') as fp:
+      with open(self.filename, 'rb') as fp:
         vault_pass = fp.read().strip()
     except OSError as exc:
       raise AnsibleVaultError(
-          f'Could not read vault password file {filename}: {exc}')
+          f'Could not read vault password file {self.filename}: {exc}')
 
     # TODO: support vault-encrypted vault password files
-    ## b_vault_data, _ = self.loader._decrypt_if_vault_data(vault_pass, filename)
+    ## b_vault_data, _ = self.loader._decrypt_if_vault_data(vault_pass, self.filename)
     ## vault_pass = b_vault_data.strip(b'\r\n')
 
     verify_secret_is_not_empty(
         vault_pass,
-        msg=f'Invalid vault password was provided from file ({filename})')
+        msg=f'Invalid vault password was provided from file ({self.filename})')
 
     return vault_pass
 
@@ -168,12 +191,15 @@ class FileVaultSecret(VaultSecret):
 
 
 class ScriptVaultSecret(FileVaultSecret):
-  def _read_file(self, filename):
-    ## if not is_executable(filename):
-      ## raise AnsibleVaultError(
-          ## f'The vault password script {filename} was not executable')
+  def _read_file(self):
+    if not is_executable(self.filename):
+      raise AnsibleVaultError(
+          f'The vault password script {self.filename} was not executable')
 
     command = self._build_command()
+
+    if platform.system() == 'Windows':
+      command = ['sh', '-c', ' '.join(command)]
 
     stdout, stderr, p = self._run(command)
 
@@ -183,7 +209,8 @@ class ScriptVaultSecret(FileVaultSecret):
 
     verify_secret_is_not_empty(
         vault_pass,
-        msg=f'Invalid vault password was provided from script ({filename})')
+        msg=('Invalid vault password was provided from script '
+             f'({self.filename})'))
 
     return vault_pass
 
@@ -204,10 +231,13 @@ class ScriptVaultSecret(FileVaultSecret):
     if proc.returncode != 0:
       raise AnsibleVaultError(
           f'Vault password script {self.filename} returned non-zero '
-          f'({proc.returncode}): {strerr}')
+          f'({proc.returncode}): {stderr}')
 
   def _build_command(self):
-    return [self.filename]
+    if platform.system() == 'Windows':
+      return [f'`cygpath {shlex.quote(self.filename)}`']
+    else:
+      return [self.filename]
 
 
 class ClientScriptVaultSecret(ScriptVaultSecret):
@@ -241,10 +271,10 @@ class ClientScriptVaultSecret(ScriptVaultSecret):
       raise AnsibleVaultError(
           f'Vault password client script {self.filename} returned non-zero '
           f'({proc.returncode}) when getting secret for '
-          f'vault-id={self._vault_id}: {strerr}')
+          f'vault-id={self._vault_id}: {stderr}')
 
   def _build_command(self):
-    command = [self.filename]
+    command = super()._build_command()
     if self._vault_id:
       command.extend(['--vault-id', self._vault_id])
 

@@ -93,10 +93,8 @@ def setup_vault_secrets(vault_ids, vault_password_files=None,
     else:
       # assuming anything else is a password file
       logging.debug(f'Reading vault password file: {vault_id_value}')
-      # read vault_pass from a file
-      with open(vault_id_value, 'rb'):
-        file_vault_secret = fp.read().strip()
 
+      # read vault_pass from a file
       file_vault_secret = get_file_vault_secret(filename=vault_id_value,
                                                 vault_id=vault_id_name)
 
