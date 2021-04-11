@@ -9,6 +9,8 @@ import sys
 
 from ansible_vault.constants import DEFAULT_VAULT_IDENTITY
 from ansible_vault.constants import DEFAULT_VAULT_ENCRYPT_IDENTITY
+from ansible_vault.constants import DEFAULT_VAULT_IDENTITY_LIST
+from ansible_vault.constants import DEFAULT_VAULT_PASSWORD_FILE
 from ansible_vault.exceptions import AnsibleVaultError
 from ansible_vault.secrets import PromptVaultSecret, get_file_vault_secret
 from ansible_vault.utils import to_bytes, to_text
@@ -55,6 +57,8 @@ def setup_vault_secrets(vault_ids, vault_password_files=None,
   vault_secrets = []
 
   vault_password_files = vault_password_files or []
+  if DEFAULT_VAULT_PASSWORD_FILE:
+    vault_password_files.append(DEFAULT_VAULT_PASSWORD_FILE)
 
   vault_ids = build_vault_ids(
       vault_ids,
@@ -275,7 +279,6 @@ class VaultCli:
   def run(self, args=None):
     self.options = self.parser.parse_args(args)
     self.args = getattr(self.options, 'args', [])
-
     action = self.options.action
 
     if self.options.vault_ids:
@@ -305,9 +308,13 @@ class VaultCli:
     # only need to ask for a password once, and those that 'write' (create,
     # encrypt) that ask for a new password and confirm it, and 'read/write (rekey)
     # that asks for the old password, then asks for a new one and confirms it.
+
+    default_vault_ids = DEFAULT_VAULT_IDENTITY_LIST
+    vault_ids = default_vault_ids + self.options.vault_ids
+
     if action in ['decrypt', 'view', 'rekey', 'edit']:
       vault_secrets = setup_vault_secrets(
-          vault_ids=self.options.vault_ids,
+          vault_ids=vault_ids,
           vault_password_files=self.options.vault_password_files,
           ask_vault_pass=self.options.ask_vault_pass)
       if not vault_secrets:
@@ -320,7 +327,7 @@ class VaultCli:
                             DEFAULT_VAULT_ENCRYPT_IDENTITY)
 
       vault_secrets = setup_vault_secrets(
-         vault_ids=self.options.vault_ids,
+         vault_ids=vault_ids,
          vault_password_files=self.options.vault_password_files,
          ask_vault_pass=self.options.ask_vault_pass,
          create_new_password=True)
@@ -355,6 +362,8 @@ class VaultCli:
                           DEFAULT_VAULT_ENCRYPT_IDENTITY)
 
       new_vault_ids = []
+      if encrypt_vault_id:
+        new_vault_ids = default_vault_ids
       if self.options.new_vault_id:
         new_vault_ids.append(self.options.new_vault_id)
 

@@ -454,7 +454,7 @@ class VaultEditor:
     try:
       plaintext = self.vault.decrypt(vaulttext, filename=filename)
       return plaintext
-    except AnsibleValueError as exc:
+    except AnsibleVaultError as exc:
       raise AnsibleVaultError(f'{exc} for {filename}')
 
   def rekey_file(self, filename, new_vault_secret, new_vault_id=None):
