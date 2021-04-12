@@ -19,6 +19,12 @@ __all__ = ['VaultLib', 'VaultEditor']
 LOGGER = logging.getLogger(__name__)
 
 
+if platform.system() == 'Windows':
+  DEFAULT_EDITOR = 'notepad'
+else:
+  DEFAULT_EDITOR = 'nano'
+
+
 b_HEADER = b'$ANSIBLE_VAULT'
 
 
@@ -551,11 +557,7 @@ class VaultEditor:
     shutil.move(src, dest)
 
   def _editor_shell_command(self, filename):
-    if platform.system() == 'Windows':
-      env_editor = os.environ.get('EDITOR', 'notepad')
-    else:
-      env_editor = os.environ.get('EDITOR', 'nano')
-
+    env_editor = os.environ.get('EDITOR', DEFAULT_EDITOR)
     editor = shlex.split(env_editor)
     editor.append(filename)
 
