@@ -1,6 +1,7 @@
 import logging
 import os
 import os.path
+import platform
 import shlex
 import shutil
 import subprocess
@@ -550,7 +551,11 @@ class VaultEditor:
     shutil.move(src, dest)
 
   def _editor_shell_command(self, filename):
-    env_editor = os.environ.get('EDITOR', 'nano')
+    if platform.system() == 'Windows':
+      env_editor = os.environ.get('EDITOR', 'notepad')
+    else:
+      env_editor = os.environ.get('EDITOR', 'nano')
+
     editor = shlex.split(env_editor)
     editor.append(filename)
 
