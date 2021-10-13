@@ -11,7 +11,7 @@ from ansible_vault.constants import DEFAULT_VAULT_IDENTITY
 from ansible_vault.constants import DEFAULT_VAULT_ENCRYPT_IDENTITY
 from ansible_vault.constants import DEFAULT_VAULT_IDENTITY_LIST
 from ansible_vault.constants import DEFAULT_VAULT_PASSWORD_FILE
-from ansible_vault.exceptions import AnsibleVaultError
+from ansible_vault.exceptions import AnsibleVaultError, AnsibleVaultOptionsError
 from ansible_vault.secrets import PromptVaultSecret, get_file_vault_secret
 from ansible_vault.utils import to_bytes, to_text
 from ansible_vault.vault import VaultLib, VaultEditor
@@ -463,7 +463,7 @@ class VaultCli:
           prompt_response = getpass.getpass('String to encrypt (hidden): ')
 
       if prompt_response == '':
-        raise ValueError(
+        raise AnsibleVaultOptionsError(
             'The plaintext provided from the prompt was empty, not encrypting')
 
       b_plaintext = to_bytes(prompt_response)
@@ -483,7 +483,7 @@ class VaultCli:
 
       stdin_text = sys.stdin.read()
       if stdin_text == '':
-        raise ValueError('stdin was empty, not encrypting')
+        raise AnsibleVaultOptionsError('stdin was empty, not encrypting')
 
       if sys.stdout.isatty() and not stdin_text.endswith('\n'):
         print()
@@ -527,7 +527,7 @@ class VaultCli:
       name, plaintext = name_and_text
 
       if plaintext == '':
-        raise ValueError(
+        raise AnsibleVaultOptionsError(
             'The plaintext provided from the command line args was empty, not '
             'encrypting')
 
@@ -613,4 +613,18 @@ class VaultCli:
 
 def main(args=None):
   cli = VaultCli()
-  return cli.run(args)
+  try:
+    return cli.run(args)
+  except AnsibleVaultOptionsError as exc:
+    print(f'ERROR! {exc}', file=sys.stderr)
+    return 5
+  except AnsibleVaultError as exc:
+    print(f'ERROR! {exc}', file=sys.stderr)
+    return 1
+  except KeyboardInterrupt:
+    print('ERROR! User interrupted execution', file=sys.stderr)
+    return 99
+  except Exception as exc:
+    print(f'ERROR! Unexpected Exception, this is probably a bug: {exc}',
+          file=sys.stderr)
+    return 250
