@@ -503,9 +503,9 @@ class VaultEditor:
         with open(filename, 'rb') as fp:
           data = fp.read()
     except Exception as exc:
-      msg = str(e)
+      msg = str(exc)
       if not msg:
-        msg = repr(e)
+        msg = repr(exc)
       raise AnsibleVaultError(f'Unable to read source file ({filename}): {msg}')
 
     return data
